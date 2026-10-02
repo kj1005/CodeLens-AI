@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+frontend/node_modules/
+frontend/dist/
+backend/chroma_data/
+backend/python-auth-example/
+.vscode/

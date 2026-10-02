@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+GitPython
+sentence-transformers
+chromadb
+rank_bm25
+google-genai
+streamlit
