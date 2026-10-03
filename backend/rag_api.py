@@ -1,3 +1,4 @@
+from citation_verification_service import CitationStatus, verify_citations
 from collections.abc import Mapping
 from typing import Any
 
@@ -38,12 +39,21 @@ class RAGAskRequest(RepositorySearchRequest):
     explanation_level: ExplanationLevel = DEFAULT_EXPLANATION_LEVEL
 
 
+class CitationVerificationResult(BaseModel):
+    citation: str
+    file_path: str
+    start_line: int | None
+    end_line: int | None
+    status: CitationStatus
+
+
 class RAGAnswerResponse(BaseModel):
     query: str
     explanation_level: ExplanationLevel
     answer: str
     results: list[RAGSourceResult]
     result_count: int
+    citation_verifications: list[CitationVerificationResult]
 
 
 def _field(result: Any, name: str, default: Any = None) -> Any:
@@ -88,6 +98,10 @@ def ask_repository(request: RAGAskRequest) -> RAGAnswerResponse:
             repository_name=request.repository_name,
         )
         context = context_builder.build_context(results)
+        print(
+    f"RAG DEBUG: explanation={request.explanation_level}, "
+    f"context_chars={len(context)}"
+)
         answer = gemini_generation_service.generate_answer(
             request.query,
             context,
@@ -109,10 +123,32 @@ def ask_repository(request: RAGAskRequest) -> RAGAnswerResponse:
             detail="Could not complete the repository question request.",
         ) from None
 
+    serialized_results = [
+        _serialize_source(result)
+        for result in results
+    ]
+
+    citation_verifications = verify_citations(
+        answer,
+        serialized_results,
+    )
+
     return RAGAnswerResponse(
         query=request.query,
         explanation_level=request.explanation_level,
         answer=answer,
-        results=[_serialize_source(result) for result in results],
-        result_count=len(results),
+        results=serialized_results,
+        result_count=len(serialized_results),
+        citation_verifications=[
+            CitationVerificationResult(
+                citation=verification.citation,
+                file_path=verification.file_path,
+                start_line=verification.start_line,
+                end_line=verification.end_line,
+                status=verification.status,
+            )
+            for verification in citation_verifications
+        ],
     )
+
+  

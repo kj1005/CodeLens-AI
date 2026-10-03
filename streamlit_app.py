@@ -110,6 +110,7 @@ if ask_submitted:
             "top_k": int(top_k),
             "explanation_level": explanation_level.lower(),
         }
+
         if limit_to_indexed_repository and indexed_repository:
             request_body["repository_name"] = indexed_repository
 
@@ -119,28 +120,95 @@ if ask_submitted:
                 json=request_body,
                 timeout=REQUEST_TIMEOUT_SECONDS,
             )
+
             if not response.ok:
                 st.error(f"Question failed: {response_error(response)}")
             else:
                 result = response.json()
+
                 st.markdown("### Answer")
-                st.markdown(result.get("answer", "No answer was returned."))
+                st.markdown(
+                    result.get("answer", "No answer was returned.")
+                )
 
                 sources = result.get("results", [])
                 st.markdown(f"### Sources ({len(sources)})")
+
                 if not sources:
-                    st.info("No source chunks were retrieved for this question.")
+                    st.info(
+                        "No source chunks were retrieved for this question."
+                    )
+
                 for source in sources:
-                    file_path = source.get("file_path", "Unknown file")
+                    file_path = source.get(
+                        "file_path", "Unknown file"
+                    )
                     start_line = source.get("start_line", "?")
                     end_line = source.get("end_line", "?")
-                    language = source.get("language", "text").lower()
-                    with st.expander(f"{file_path} · Lines {start_line}-{end_line}"):
-                        st.code(source.get("document", ""), language=language)
+                    language = source.get(
+                        "language", "text"
+                    ).lower()
+
+                    with st.expander(
+                        f"{file_path} · Lines {start_line}-{end_line}"
+                    ):
+                        st.code(
+                            source.get("document", ""),
+                            language=language,
+                        )
+
                         score_columns = st.columns(2)
-                        score_columns[0].caption(f"RRF score: {source.get('rrf_score')}")
-                        score_columns[1].caption(f"Rerank score: {source.get('rerank_score')}")
+                        score_columns[0].caption(
+                            f"RRF score: {source.get('rrf_score')}"
+                        )
+                        score_columns[1].caption(
+                            f"Rerank score: {source.get('rerank_score')}"
+                        )
+
+                st.markdown("### Citation Verification")
+
+                citation_verifications = result.get(
+                    "citation_verifications", []
+                )
+
+                if not citation_verifications:
+                    st.info(
+                        "No citations were detected in the generated answer."
+                    )
+                else:
+                    for verification in citation_verifications:
+                        citation = verification.get("citation", "")
+                        status = verification.get(
+                            "status", "unverified"
+                        )
+                        file_path = verification.get(
+                            "file_path", "Unknown file"
+                        )
+                        start_line = verification.get("start_line")
+                        end_line = verification.get("end_line")
+
+                        if start_line is None:
+                            location = file_path
+                        elif start_line == end_line:
+                            location = f"{file_path}:{start_line}"
+                        else:
+                            location = (
+                                f"{file_path}:{start_line}-{end_line}"
+                            )
+
+                        if status == "verified":
+                            st.success(
+                                f"✓ Verified — {citation} → {location}"
+                            )
+                        else:
+                            st.warning(
+                                f"⚠ Unverified — {citation} → {location}"
+                            )
+
         except requests.RequestException as error:
             show_request_error(error)
+
         except ValueError:
-            st.error("The API returned an invalid answer response.")
+            st.error(
+                "The API returned an invalid answer response."
+            )
