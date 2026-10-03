@@ -1,87 +1,206 @@
 # CodeLens AI
 
-CodeLens AI is a full-stack GitHub codebase analysis assistant. The backend ingests supported repository files, chunks their source, generates local code embeddings, persists vectors in ChromaDB, and retrieves relevant chunks through dense vector search. Answer generation is not implemented.
+### Adaptive Hybrid-RAG Codebase Analysis Assistant
 
-## Embeddings
+CodeLens AI is an AI-powered codebase analysis tool that allows developers to ask natural-language questions about a GitHub repository. It retrieves relevant source code using hybrid search and uses Gemini to generate grounded answers with file and line-level citations.
 
-An embedding is a numerical representation of a text passage. Here, each code chunk is encoded from its source text so a later step can store and compare those vectors. The model is `BAAI/bge-small-en-v1.5`; it produces 384-dimensional vectors and runs on CPU. The model is loaded once per backend process and downloaded from Hugging Face the first time an embedding request is made.
+## Key Features
 
-## Backend setup
+- GitHub repository ingestion and code indexing
+- Custom line-based code chunking
+- Semantic search using BGE embeddings
+- BM25 lexical search
+- Hybrid retrieval using Reciprocal Rank Fusion (RRF)
+- Cross-Encoder reranking
+- Gemini-powered RAG answers
+- Beginner / Intermediate / Expert explanation modes
+- Automatic citation verification
+- FastAPI backend with Streamlit UI
 
-From the project root, create the environment and install the backend requirements:
+## Tech Stack
 
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+| Category | Technology |
+|---|---|
+| Language | Python |
+| Backend | FastAPI |
+| Frontend | Streamlit |
+| LLM | Google Gemini |
+| Embeddings | Sentence Transformers |
+| Embedding Model | `BAAI/bge-small-en-v1.5` |
+| Vector Database | ChromaDB |
+| Lexical Retrieval | BM25 |
+| Hybrid Ranking | Reciprocal Rank Fusion (RRF) |
+| Reranking | Cross-Encoder |
+| Reranker Model | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
+| Testing | Pytest |
+| Version Control | Git / GitHub |
 
-Start the API from the `backend` directory:
+## How It Works
 
-```powershell
-uvicorn main:app --reload
-```
+GitHub Repository → Code Chunking + BGE Embeddings → ChromaDB + BM25 → Hybrid Retrieval + RRF → Cross-Encoder Reranking → Gemini RAG Generation → Citation Verification → Answer + Sources
 
-The health check is available at <http://127.0.0.1:8000/>. The API documentation is at <http://127.0.0.1:8000/docs>.
+## Adaptive Explanations
 
-## Test repository embeddings
+CodeLens supports three explanation levels:
 
-In another PowerShell terminal, submit a public GitHub repository URL:
+- **Beginner** — simple language and explanations of technical terms
+- **Intermediate** — implementation flow, functions, and component interactions
+- **Expert** — detailed technical implementation and relationships
 
-```powershell
-Invoke-RestMethod `
-	-Uri http://127.0.0.1:8000/repository/embeddings `
-	-Method Post `
-	-ContentType "application/json" `
-	-Body '{"url":"https://github.com/owner/repository","max_chunks":5}' |
-	ConvertTo-Json -Depth 8
-```
+The retrieved code remains the same while the explanation depth changes according to the selected level.
 
-The response includes the repository name, supported file and chunk totals, embedding dimension, and up to the requested number of chunks with their metadata and vectors. `max_chunks` defaults to 100 and can be set up to 500. The first embedding request may take longer while the model weights are downloaded.
+## Citation Verification
 
-## ChromaDB vector storage
+Generated citations are checked against the source-code chunks retrieved by the system.
 
-ChromaDB persists the vectors generated from code chunks in `backend/chroma_data/`. Each record uses the chunk ID as its ID, the original source code as its document, the 384-dimensional embedding as its vector, and file path, language, line range, and repository name as metadata. Re-indexing uses upsert, so the same chunk ID updates its record instead of creating a duplicate. Retrieval and similarity search are intentionally deferred to the next step.
+Supported formats include:
 
-To persist a repository's chunks and embeddings, run:
+- `[app.py]`
+- `[app.py:51]`
+- `[app.py:51-72]`
 
-```powershell
-Invoke-RestMethod `
-	-Uri http://127.0.0.1:8000/repository/index-to-chroma `
-	-Method Post `
-	-ContentType "application/json" `
-	-Body '{"url":"https://github.com/owner/repository","max_chunks":5}' |
-	ConvertTo-Json -Depth 5
-```
+The verifier checks whether the cited file and line range correspond to the retrieved source metadata.
 
-The response reports files and chunks processed, vectors upserted, total vectors in the collection, and embedding dimension. ChromaDB storage remains on disk across backend restarts.
+## Setup
 
-## Dense vector retrieval
+### Prerequisites
 
-`POST /repository/search` embeds a natural-language query with the same `BAAI/bge-small-en-v1.5` model, then asks ChromaDB to compare that query vector with the stored document vectors. ChromaDB returns the nearest chunks and its native L2 distances; the backend does not calculate similarity itself. `top_k` defaults to 5 and is limited to 50. An optional `repository_name` filters results using the metadata saved during indexing.
+- Python 3.10+
+- Git
+- Gemini API key
 
-Storage and retrieval are separate operations: `/repository/index-to-chroma` creates or updates persistent records, while `/repository/search` embeds a query and reads matching records. Dense retrieval is implemented in this step; BM25 and RRF are planned for the next stage. Reranking and answer generation are not included.
+### 1. Clone the Repository
 
-Test semantic search with:
+    git clone https://github.com/kj1005/CodeLens-AI.git
+    cd CodeLens-AI
 
-```powershell
-Invoke-RestMethod `
-	-Uri http://127.0.0.1:8000/repository/search `
-	-Method Post `
-	-ContentType "application/json" `
-	-Body '{"query":"Where are user records loaded?","top_k":5,"repository_name":"repository"}' |
-	ConvertTo-Json -Depth 6
-```
+### 2. Create Virtual Environment
 
-## Frontend
+    cd backend
+    python -m venv .venv
+    .\.venv\Scripts\Activate.ps1
 
-From the project root, install and run the Vite frontend:
+### 3. Install Dependencies
 
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+    pip install -r requirements.txt
 
-Open the local URL printed by Vite, usually <http://localhost:5173/>. The backend allows requests from Vite's local origins (`localhost:5173` and `127.0.0.1:5173`).
+### 4. Configure Gemini
+
+Create `backend/.env` and add:
+
+    GEMINI_API_KEY=your_api_key
+    GEMINI_MODEL=gemini-3.8-flash
+
+Do not commit the `.env` file or expose the API key.
+
+## Running the Application
+
+### Start Backend
+
+From the `backend` directory:
+
+    uvicorn main:app --reload --port 8001 --env-file .env
+
+Backend:
+
+    http://127.0.0.1:8001
+
+FastAPI documentation:
+
+    http://127.0.0.1:8001/docs
+
+### Start Streamlit Frontend
+
+Open another terminal in the project root:
+
+    $env:CODELENS_API_URL="http://127.0.0.1:8001"
+    backend\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
+
+The Streamlit interface will open at the local URL shown in the terminal, usually:
+
+    http://localhost:8501
+
+## Usage
+
+1. Open the Streamlit application.
+2. Enter a public GitHub repository URL.
+3. Click **Index Repository**.
+4. Ask a natural-language question about the codebase.
+5. Select **Beginner**, **Intermediate**, or **Expert** mode.
+6. View the answer, retrieved sources, ranking information, and citation verification.
+
+### Example Questions
+
+    Where is authentication handled?
+    Where is the database connection initialized?
+    How are users created?
+    Which function handles authorization?
+    Where are the API routes defined?
+    How does the application start?
+
+## API Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/` | Backend health check |
+| POST | `/repository/index-to-chroma` | Index GitHub repository |
+| POST | `/repository/search` | Dense semantic search |
+| POST | `/repository/hybrid-search` | Hybrid BM25 + dense search |
+| POST | `/repository/ask` | RAG-based question answering |
+
+## Testing
+
+Run the RAG API tests:
+
+    cd backend
+    .\.venv\Scripts\python.exe -m pytest tests\test_rag_api.py -q
+
+## Project Structure
+
+    CodeLens-AI/
+    │
+    ├── backend/
+    │   ├── tests/
+    │   ├── main.py
+    │   ├── rag_api.py
+    │   ├── hybrid_api.py
+    │   ├── github_service.py
+    │   ├── chunking_service.py
+    │   ├── embedding_service.py
+    │   ├── chroma_service.py
+    │   ├── retrieval_service.py
+    │   ├── bm25_service.py
+    │   ├── reranker_service.py
+    │   ├── context_builder.py
+    │   ├── gemini_service.py
+    │   ├── citation_verification_service.py
+    │   ├── requirements.txt
+    │   └── .env
+    │
+    ├── streamlit_app.py
+    ├── .gitignore
+    └── README.md
+
+## Future Improvements
+
+- AST-aware code chunking
+- Function and class-level indexing
+- Dependency-aware retrieval
+- Incremental repository indexing
+- Retrieval and answer-quality evaluation
+- Cloud-based vector storage
+- Multi-user authentication
+
+## Technical Concepts Demonstrated
+
+RAG · Dense Retrieval · BM25 · Hybrid Search · Reciprocal Rank Fusion · Cross-Encoder Reranking · Vector Databases · Sentence Transformers · LLM Grounding · Citation Verification · FastAPI · Streamlit · REST APIs · GitHub Integration · Automated Testing
+
+## Repository
+
+https://github.com/kj1005/CodeLens-AI
+
+## Author
+
+**Keya Jadhav**  
+Computer Engineering Student  
+Pimpri Chinchwad College of Engineering, Pune
